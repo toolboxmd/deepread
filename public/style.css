@@ -17,23 +17,14 @@
 
 * { box-sizing: border-box; }
 html { background: var(--bg); }
-body { margin: 0; background: var(--bg); color: var(--text); font: 400 20px/1.72 Literata, Georgia, serif;
+html { --reader-size: 20px; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 var(--reader-size)/1.72 Literata, Georgia, serif;
   -webkit-font-smoothing: antialiased; transition: background-color .2s, color .2s; }
 body[data-view="search"] .reader { display: none; }
 body[data-view="reader"] .search { display: none; }
 a { color: inherit; }
 .katex { font-size: 1.05em; }
 .katex-display { overflow-x: auto; overflow-y: hidden; }
-
-/* theme picker */
-.themes { position: fixed; top: 1.1rem; right: 1.2rem; z-index: 20; display: flex; gap: .45rem; }
-.themes button { width: 18px; height: 18px; border-radius: 50%; cursor: pointer; padding: 0;
-  border: 1px solid rgba(128,128,128,.55); }
-.themes [data-theme-choice="paper"] { background: #f6f1e7; }
-.themes [data-theme-choice="white"] { background: #ffffff; }
-.themes [data-theme-choice="black"] { background: #121110; }
-[data-theme="paper"] [data-theme-choice="paper"], [data-theme="white"] [data-theme-choice="white"],
-[data-theme="black"] [data-theme-choice="black"] { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* search */
 .search { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 2rem; }
@@ -50,7 +41,7 @@ a { color: inherit; }
 .topbar { display: flex; align-items: center; gap: 1rem; max-width: 36rem; margin: 0 auto; padding: 1.4rem 1.25rem 0;
   font: italic 400 .95rem Literata, serif; color: var(--muted); }
 .brand-small { text-decoration: none; }
-.progress { flex: 1; height: 2px; background: var(--rule); margin-right: 4.5rem; }
+.progress { flex: 1; height: 2px; background: var(--rule); }
 .progress span { display: block; height: 100%; width: 0; background: var(--bar); }
 article { max-width: 36rem; margin: 0 auto; padding: 3rem 1.25rem 12rem; }
 article h1 { font: 600 2.5rem/1.15 Literata, serif; letter-spacing: -.015em; text-align: center; margin: 0 0 2.5rem; }
@@ -72,7 +63,43 @@ article blockquote { margin: 1.5rem 0; padding-left: 1.2rem; border-left: 2px so
   border-radius: 8px; background: #ff3d7f; color: #fff; font: 12px/1.2 ui-monospace, Menlo, monospace; white-space: nowrap; }
 
 @media (max-width: 600px) {
-  body { font-size: 18px; }
+  html { --reader-size: 18px; }
   article h1 { font-size: 2rem; }
   .search .brand { font-size: 2.6rem; }
 }
+
+/* reading settings dial */
+.dial { position: fixed; right: 1.5rem; bottom: 1.5rem; z-index: 25; width: 48px; height: 48px; --r: 106px; }
+.dial-goo { position: absolute; inset: -130px -10px -10px -130px; filter: url(#goo); pointer-events: none; }
+.dial-goo .blob, .dial-item { position: absolute; width: 38px; height: 38px; border-radius: 50%;
+  --a: calc(180deg + var(--i) * 22.5deg);
+  transition: transform .42s cubic-bezier(.34, 1.4, .5, 1), opacity .2s; transition-delay: calc(var(--i) * 28ms); }
+.dial-goo .blob { right: 15px; bottom: 15px; background: var(--button); }
+.dial-goo .blob.main { width: 48px; height: 48px; right: 10px; bottom: 10px; }
+.dial-items { position: absolute; inset: 0; pointer-events: none; }
+.dial-item { left: 5px; top: 5px; border: 0; padding: 0; background: transparent; color: var(--button-text);
+  display: grid; place-items: center; cursor: pointer; opacity: 0; }
+.dial.open .dial-items { pointer-events: auto; }
+.dial.open .dial-item, .dial.open .dial-goo .blob:not(.main) {
+  transform: translate(calc(cos(var(--a)) * var(--r)), calc(sin(var(--a)) * var(--r))); }
+.dial.open .dial-item { opacity: 1; }
+.dial:not(.open) .dial-item, .dial:not(.open) .dial-goo .blob { transition-delay: 0s; }
+.dial-item:hover, .dial-item:focus-visible { outline: none; }
+.dial-item:hover .swatch, .dial-item:hover .aa, .dial-item:focus-visible .swatch, .dial-item:focus-visible .aa { transform: scale(1.15); }
+.aa { font: 600 14px/1 Literata, serif; transition: transform .15s; }
+.aa.small { font-size: 12px; }
+.aa.large { font-size: 18px; }
+.swatch { width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--button-text); transition: transform .15s; }
+[data-theme-choice="paper"] .swatch { background: #f6f1e7; }
+[data-theme-choice="white"] .swatch { background: #ffffff; }
+[data-theme-choice="black"] .swatch { background: #121110; }
+[data-theme="paper"] [data-theme-choice="paper"] .swatch, [data-theme="white"] [data-theme-choice="white"] .swatch,
+[data-theme="black"] [data-theme-choice="black"] .swatch { box-shadow: 0 0 0 2.5px var(--button), 0 0 0 4px var(--button-text); }
+.dial-toggle { position: absolute; inset: 0; border: 0; border-radius: 50%; background: transparent; color: var(--button-text);
+  display: grid; place-items: center; cursor: pointer; }
+.dial-toggle svg { transition: transform .3s cubic-bezier(.34, 1.4, .5, 1); }
+.dial.open .dial-toggle svg { transform: rotate(45deg); }
+.dial:not(.open) { opacity: .82; transition: opacity .2s; }
+.dial:not(.open):hover { opacity: 1; }
+@media (max-width: 600px) { .dial { right: 1rem; bottom: 1rem; } }
+@media (prefers-reduced-motion: reduce) { .dial-goo .blob, .dial-item, .dial-toggle svg { transition: none; } }

@@ -19,6 +19,38 @@ function setTheme(theme) {
 }
 document.querySelectorAll("[data-theme-choice]").forEach((b) => (b.onclick = () => setTheme(b.dataset.themeChoice)));
 
+// ---------- text size ----------
+const SIZES = [16, 18, 20, 22, 24, 26];
+function stepSize(step) {
+  const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--reader-size")) || 20;
+  const i = SIZES.reduce((best, s, k) => (Math.abs(s - current) < Math.abs(SIZES[best] - current) ? k : best), 0);
+  const next = SIZES[Math.min(SIZES.length - 1, Math.max(0, i + step))];
+  document.documentElement.style.setProperty("--reader-size", `${next}px`);
+  localStorage.setItem("deepread-size", next);
+}
+document.querySelectorAll("[data-size]").forEach((b) => (b.onclick = () => stepSize(Number(b.dataset.size))));
+
+// ---------- settings dial: click or tap toggles; hover opens on devices that can hover ----------
+const dial = $("dial");
+let dialTimer = 0, openedAt = 0;
+function setDial(open) {
+  clearTimeout(dialTimer);
+  if (open && !dial.classList.contains("open")) openedAt = performance.now();
+  dial.classList.toggle("open", open);
+  $("dial-toggle").setAttribute("aria-expanded", String(open));
+}
+// A click that lands just after hover opened the dial should not immediately close it.
+$("dial-toggle").onclick = () => {
+  const open = dial.classList.contains("open");
+  setDial(!open || performance.now() - openedAt < 600);
+};
+if (matchMedia("(hover: hover)").matches) {
+  dial.addEventListener("mouseenter", () => setDial(true));
+  dial.addEventListener("mouseleave", () => { dialTimer = setTimeout(() => setDial(false), 350); });
+}
+addEventListener("keydown", (e) => { if (e.key === "Escape") setDial(false); });
+addEventListener("pointerdown", (e) => { if (!dial.contains(e.target)) setDial(false); });
+
 // ---------- measuring ----------
 function textWords() { return article.textContent.split(/\s+/).filter(Boolean).length; }
 function textHeight() {

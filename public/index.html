@@ -8,14 +8,13 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400;1,7..72,600&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
   <link rel="stylesheet" href="/style.css">
-  <script>document.documentElement.dataset.theme = localStorage.getItem("deepread-theme") || "paper";</script>
+  <script>
+    document.documentElement.dataset.theme = localStorage.getItem("deepread-theme") || "paper";
+    { const size = localStorage.getItem("deepread-size");
+      if (size) document.documentElement.style.setProperty("--reader-size", size + "px"); }
+  </script>
 </head>
 <body data-view="search">
-  <div class="themes" role="radiogroup" aria-label="Theme">
-    <button data-theme-choice="paper" role="radio" aria-label="Paper theme" title="Paper"></button>
-    <button data-theme-choice="white" role="radio" aria-label="White theme" title="White"></button>
-    <button data-theme-choice="black" role="radio" aria-label="Black theme" title="Black"></button>
-  </div>
 
   <main class="search">
     <h1 class="brand">Deep Read</h1>
@@ -33,6 +32,29 @@
     </header>
     <article id="article"></article>
     <div id="status" class="status" aria-live="polite"></div>
+  </div>
+
+  <!-- Reading settings: gooey dial. Blobs live in the SVG-filtered layer; icons stay crisp above. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs><filter id="goo"><feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
+      <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="goo"/>
+      <feComposite in="SourceGraphic" in2="goo" operator="atop"/></filter></defs>
+  </svg>
+  <div class="dial" id="dial">
+    <div class="dial-goo" aria-hidden="true">
+      <span class="blob" style="--i:0"></span><span class="blob" style="--i:1"></span><span class="blob" style="--i:2"></span>
+      <span class="blob" style="--i:3"></span><span class="blob" style="--i:4"></span><span class="blob main"></span>
+    </div>
+    <div class="dial-items" id="dial-items">
+      <button class="dial-item" style="--i:0" data-size="-1" aria-label="Smaller text" title="Smaller text"><span class="aa small">A</span></button>
+      <button class="dial-item" style="--i:1" data-size="1" aria-label="Larger text" title="Larger text"><span class="aa large">A</span></button>
+      <button class="dial-item" style="--i:2" data-theme-choice="paper" aria-label="Paper theme" title="Paper"><span class="swatch"></span></button>
+      <button class="dial-item" style="--i:3" data-theme-choice="white" aria-label="White theme" title="White"><span class="swatch"></span></button>
+      <button class="dial-item" style="--i:4" data-theme-choice="black" aria-label="Black theme" title="Black"><span class="swatch"></span></button>
+    </div>
+    <button class="dial-toggle" id="dial-toggle" aria-expanded="false" aria-controls="dial-items" aria-label="Reading settings">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
   </div>
 
   <div id="pace" class="pace" hidden>Reading pace</div>

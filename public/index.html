@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- Prototype question: does a live, reading-paced Deep Read feel good, and which look fits it?
+     Variants on one route via ?variant=A|B|C (Book, Night, Margin). -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Deep Read</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body data-variant="A" data-view="search">
+  <main class="search">
+    <h1 class="brand">Deep Read</h1>
+    <p class="tagline">One topic. As deep as you care to read.</p>
+    <form id="search-form" autocomplete="off">
+      <input id="topic" name="topic" maxlength="200" placeholder="What do you want to understand?" autofocus>
+      <button type="submit">Read</button>
+    </form>
+  </main>
+
+  <div class="reader">
+    <header class="topbar">
+      <a href="/" class="brand-small">Deep Read</a>
+      <div class="progress"><span id="progress-bar"></span></div>
+    </header>
+    <nav class="outline" aria-label="Sections"><p class="outline-title">In this read</p><ol id="outline"></ol></nav>
+    <article id="article"></article>
+    <div id="status" class="status" aria-live="polite"></div>
+  </div>
+
+  <div id="pace" class="pace" hidden>Reading pace</div>
+
+  <div class="switcher" role="toolbar" aria-label="Prototype variants">
+    <button id="prev" aria-label="Previous variant">&larr;</button>
+    <span id="variant-name">A (Book)</span>
+    <button id="next" aria-label="Next variant">&rarr;</button>
+    <span class="stats" id="stats"></span>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

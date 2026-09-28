@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="only light">
   <title>Deep Read</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400;1,7..72,600&display=swap">
@@ -10,6 +11,9 @@
   <link rel="stylesheet" href="/style.css">
   <script>
     document.documentElement.dataset.theme = localStorage.getItem("deepread-theme") || "paper";
+    // Declare each theme's scheme so browsers with automatic dark mode leave our colours alone.
+    document.querySelector('meta[name="color-scheme"]').content =
+      document.documentElement.dataset.theme === "black" ? "only dark" : "only light";
     { const size = localStorage.getItem("deepread-size");
       if (size) document.documentElement.style.setProperty("--reader-size", size + "px"); }
   </script>

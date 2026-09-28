@@ -16,6 +16,7 @@ const state = { id: null, topic: "", chunks: [], askedPer: [], writing: false, s
 // ---------- theme ----------
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="color-scheme"]').content = theme === "black" ? "only dark" : "only light";
   localStorage.setItem("deepread-theme", theme);
 }
 document.querySelectorAll("[data-theme-choice]").forEach((b) => (b.onclick = () => setTheme(b.dataset.themeChoice)));

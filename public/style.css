@@ -1,15 +1,15 @@
 /* Deep Read: one book-style layout, three colour themes on html[data-theme]. */
-:root, [data-theme="paper"] {
+:root, [data-theme="paper"] { color-scheme: only light;
   --bg: #f6f1e7; --text: #2a2621; --muted: #7a6f60; --accent: #8a5a3b;
   --rule: #e4dac8; --ornament: #b39a7c; --field: #fffdf8; --field-border: #cfc3ad;
   --button: #2a2621; --button-text: #f6f1e7; --bar: #a8876a;
 }
-[data-theme="white"] {
+[data-theme="white"] { color-scheme: only light;
   --bg: #ffffff; --text: #1f1f1f; --muted: #6e6e6e; --accent: #7a4a2b;
   --rule: #ececec; --ornament: #b8b8b8; --field: #ffffff; --field-border: #d4d4d4;
   --button: #1f1f1f; --button-text: #ffffff; --bar: #8a8a8a;
 }
-[data-theme="black"] {
+[data-theme="black"] { color-scheme: only dark;
   --bg: #121110; --text: #e4ddd1; --muted: #978f82; --accent: #d4a373;
   --rule: #2b2825; --ornament: #6e6457; --field: #1c1a18; --field-border: #3a3631;
   --button: #e4ddd1; --button-text: #121110; --bar: #d4a373;
@@ -64,6 +64,10 @@ article blockquote { margin: 1.5rem 0; padding-left: 1.2rem; border-left: 2px so
 
 @media (max-width: 600px) {
   html { --reader-size: 18px; }
+  .search { padding: 1.25rem; }
+  .search form { flex-direction: column; gap: .6rem; }
+  .search input { border-right: 1px solid var(--field-border); border-radius: 4px; padding: .85rem .9rem; }
+  .search button { border-radius: 4px; padding: .8rem 1.4rem; }
   article h1 { font-size: 2rem; }
   .search .brand { font-size: 2.6rem; }
 }

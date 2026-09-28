@@ -97,9 +97,13 @@ article blockquote { margin: 1.5rem 0; padding-left: 1.2rem; border-left: 2px so
 [data-theme="black"] [data-theme-choice="black"] .swatch { box-shadow: 0 0 0 2.5px var(--button), 0 0 0 4px var(--button-text); }
 .dial-toggle { position: absolute; inset: 0; border: 0; border-radius: 50%; background: transparent; color: var(--button-text);
   display: grid; place-items: center; cursor: pointer; }
-.dial-toggle svg { transition: transform .3s cubic-bezier(.34, 1.4, .5, 1); }
-.dial.open .dial-toggle svg { transform: rotate(45deg); }
+.dial-toggle > * { grid-area: 1 / 1; transition: transform .3s cubic-bezier(.34, 1.4, .5, 1), opacity .2s; }
+.toggle-aa { font: 600 19px/1 Literata, serif; letter-spacing: -.02em; }
+.toggle-aa small { font-size: 14px; font-weight: 400; }
+.toggle-close { opacity: 0; transform: rotate(-90deg) scale(.6); }
+.dial.open .toggle-aa { opacity: 0; transform: rotate(90deg) scale(.6); }
+.dial.open .toggle-close { opacity: 1; transform: none; }
 .dial:not(.open) { opacity: .82; transition: opacity .2s; }
 .dial:not(.open):hover { opacity: 1; }
 @media (max-width: 600px) { .dial { right: 1rem; bottom: 1rem; } }
-@media (prefers-reduced-motion: reduce) { .dial-goo .blob, .dial-item, .dial-toggle svg { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .dial-goo .blob, .dial-item, .dial-toggle > * { transition: none; } }

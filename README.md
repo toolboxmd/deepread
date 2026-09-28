@@ -21,7 +21,7 @@ and passed only through the environment, unless `OPENROUTER_API_KEY` is set.
 
 - `src/worker.js` is a stateless Cloudflare Worker. The page sends the topic,
   the article so far and a word target; the Worker adds the OpenRouter key, the
-  system prompt (`prompt.md`) and the model (`x-ai/grok-4.7`, medium effort),
+  system prompt (`prompt.md`) and the model (`x-ai/grok-4.7`, low effort),
   and streams the next chunk. It rebuilds the same history every time so the
   prompt cache keeps matching.
 - `public/` is the page. It measures how many words fit on the reader's

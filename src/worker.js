@@ -4,7 +4,9 @@
 import SYSTEM from "../prompt.md";
 
 const MODEL = "x-ai/grok-4.7";
-const EFFORT = "medium";
+// Low effort: first text in about 2-6 s (medium took 10-63 s) at a third of the cost,
+// with no accuracy loss in side-by-side reads (issue #5).
+const EFFORT = "low";
 const MAX_TURNS = 80;
 const MAX_CHUNK_CHARS = 8000;
 const CC = { type: "ephemeral" };
@@ -60,7 +62,8 @@ async function next(request, env, ctx) {
   const send = (event, data) => writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
 
   ctx.waitUntil((async () => {
-    let text = "", usage = null, buf = "", lastBeat = 0;
+    let text = "", usage = null, buf = "", lastBeat = 0, firstTextMs = null;
+    const started = Date.now();
     const decoder = new TextDecoder();
     try {
       for await (const bytes of r.body) {
@@ -74,7 +77,11 @@ async function next(request, env, ctx) {
           if (evt.error) throw new Error(evt.error.message || "stream error");
           const d = evt.choices?.[0]?.delta;
           const delta = d?.content;
-          if (delta) { text += delta; await send("delta", { text: delta }); }
+          if (delta) {
+            if (firstTextMs === null) firstTextMs = Date.now() - started;
+            text += delta;
+            await send("delta", { text: delta });
+          }
           // While the model reasons, send a content-free heartbeat at most once a second.
           else if ((d?.reasoning || d?.reasoning_details?.length) && Date.now() - lastBeat > 1000) {
             lastBeat = Date.now();
@@ -88,7 +95,9 @@ async function next(request, env, ctx) {
         cached: usage?.prompt_tokens_details?.cached_tokens || 0, prompt: usage?.prompt_tokens || 0 });
       // One non-personal line per chunk: how far readers get and what it costs.
       console.log(JSON.stringify({ evt: "chunk", article: id, n: turns.length + 1, asked: words, written,
-        cost: usage?.cost || 0, cached: usage?.prompt_tokens_details?.cached_tokens || 0, prompt: usage?.prompt_tokens || 0 }));
+        cost: usage?.cost || 0, cached: usage?.prompt_tokens_details?.cached_tokens || 0, prompt: usage?.prompt_tokens || 0,
+        thinking: usage?.completion_tokens_details?.reasoning_tokens ?? null, first_text_ms: firstTextMs,
+        total_ms: Date.now() - started }));
       await writer.close();
     } catch (err) {
       upstream.abort(); // reader left, or the stream failed

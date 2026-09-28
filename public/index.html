@@ -35,6 +35,10 @@
       <div class="progress"><span id="progress-bar"></span></div>
     </header>
     <article id="article"></article>
+    <div id="working" class="working" role="status" hidden>
+      <canvas id="orb" class="orb" aria-hidden="true"></canvas>
+      <span id="working-text"></span><span id="working-time" class="working-time"></span>
+    </div>
     <div id="status" class="status" aria-live="polite"></div>
   </div>
 
@@ -62,7 +66,7 @@
     </button>
   </div>
 
-  <div id="pace" class="pace" hidden>Reading pace</div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <div id="stats" class="stats" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>

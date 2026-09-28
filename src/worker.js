@@ -60,7 +60,7 @@ async function next(request, env, ctx) {
   const send = (event, data) => writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
 
   ctx.waitUntil((async () => {
-    let text = "", usage = null, buf = "";
+    let text = "", usage = null, buf = "", lastBeat = 0;
     const decoder = new TextDecoder();
     try {
       for await (const bytes of r.body) {
@@ -72,8 +72,14 @@ async function next(request, env, ctx) {
           if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
           const evt = JSON.parse(line.slice(6));
           if (evt.error) throw new Error(evt.error.message || "stream error");
-          const delta = evt.choices?.[0]?.delta?.content;
+          const d = evt.choices?.[0]?.delta;
+          const delta = d?.content;
           if (delta) { text += delta; await send("delta", { text: delta }); }
+          // While the model reasons, send a content-free heartbeat at most once a second.
+          else if ((d?.reasoning || d?.reasoning_details?.length) && Date.now() - lastBeat > 1000) {
+            lastBeat = Date.now();
+            await send("thinking", {});
+          }
           if (evt.usage) usage = evt.usage;
         }
       }

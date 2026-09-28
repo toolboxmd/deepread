@@ -10,7 +10,8 @@ const CHUNK_SCREENS = 1.5; // each request asks for about this many screens of t
 const AHEAD_SCREENS = 1.0; // request the next chunk when less than this much is unread
 const MIN_WORDS = 150, MAX_WORDS = 600;
 
-const state = { id: null, maxWpm: 700, chunks: [], writing: false, waiting: false, retryTimer: 0, cost: 0, cached: 0, prompt: 0, asked: 0 };
+const MAX_WPM = 700; // fastest reading pace the scroll cap allows
+const state = { id: null, topic: "", chunks: [], askedPer: [], writing: false, stopped: false, retryAt: 0, cost: 0, cached: 0, prompt: 0, asked: 0 };
 
 // ---------- theme ----------
 function setTheme(theme) {
@@ -110,40 +111,34 @@ function stats() {
 }
 
 // ---------- generation ----------
-async function startArticle(topic) {
+// The page keeps the article; each request sends it back so the server stays stateless.
+function startArticle(topic) {
   document.body.dataset.view = "reader";
   article.innerHTML = "";
-  clearTimeout(state.retryTimer);
-  Object.assign(state, { id: null, chunks: [], writing: false, waiting: false, cost: 0, cached: 0, prompt: 0, asked: 0 });
+  Object.assign(state, { id: crypto.randomUUID(), topic, chunks: [], askedPer: [], writing: false, stopped: false, retryAt: 0,
+    cost: 0, cached: 0, prompt: 0, asked: 0 });
   status("Thinking about where to begin…");
-  const r = await fetch("/api/article", { method: "POST", body: JSON.stringify({ topic }) });
-  const info = await r.json();
-  if (!r.ok) return status(info.error || "Could not start.");
-  state.id = info.id;
-  state.maxWpm = info.maxWpm;
   document.title = `${topic} · Deep Read`;
   readLimit = 0;
   fetchNext();
 }
 
 async function fetchNext() {
-  if (state.writing || !state.id) return;
+  if (state.writing || state.stopped || !state.id) return;
   state.writing = true;
   state.asked = wordsForChunk();
+  const turns = state.chunks.map((text, i) => ({ text, asked: state.askedPer[i] }));
   const index = state.chunks.length;
   state.chunks.push("");
   let finished = false;
   try {
-    const r = await fetch(`/api/next?id=${state.id}&words=${state.asked}`, { method: "POST" });
-    if (r.status === 429) {
-      const { retryAfterMs } = await r.json();
-      state.chunks.pop();
-      status("Keeping pace with your reading…");
-      state.waiting = true;
-      state.retryTimer = setTimeout(() => { state.waiting = false; checkAhead(); }, retryAfterMs + 50);
-      return;
+    const r = await fetch("/api/next", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: state.id, topic: state.topic, turns, words: state.asked }) });
+    if (r.status === 402) {
+      state.stopped = true;
+      throw new Error("Deep Read is out of reading credit for now. Please come back later.");
     }
-    if (!r.ok) throw new Error((await r.json()).error);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "The writer is unavailable right now.");
     if (index > 0) status("");
     const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = "";
@@ -160,15 +155,18 @@ async function fetchNext() {
         if (event === "delta") { state.chunks[index] += data.text; status(""); scheduleRender(); }
         if (event === "done") {
           finished = true;
-          state.cost = data.total; state.cached = data.cached; state.prompt = data.prompt;
+          state.askedPer[index] = data.asked;
+          state.cost += data.cost; state.cached = data.cached; state.prompt = data.prompt;
         }
         if (event === "error") throw new Error(data.message);
       }
     }
     if (!finished) throw new Error("The stream ended early.");
   } catch (err) {
-    if (!state.chunks[index]) state.chunks.pop();
-    status(`Something went wrong: ${err.message}`);
+    // A chunk only counts once it finished; a partial one would break the shared history.
+    if (!finished) state.chunks.splice(index, 1);
+    if (state.stopped) status(err.message);
+    else { status(`Something went wrong: ${err.message} Trying again shortly.`); state.retryAt = Date.now() + 10000; setTimeout(checkAhead, 10050); }
   } finally {
     state.writing = false;
     stats();
@@ -178,18 +176,18 @@ async function fetchNext() {
 
 // Ask for more only when less than AHEAD_SCREENS of written text is left below the viewport.
 function checkAhead() {
-  if (state.writing || state.waiting || !state.id || document.body.dataset.view !== "reader") return;
+  if (state.writing || state.stopped || Date.now() < state.retryAt || !state.id || document.body.dataset.view !== "reader") return;
   if (unreadPx() < innerHeight * AHEAD_SCREENS) fetchNext();
 }
 
 // ---------- reading-pace scroll cap ----------
-// The furthest point you may scroll to grows at maxWpm, and you can bank at most one screen.
+// The furthest point you may scroll to grows at MAX_WPM, and you can bank at most one screen.
 let readLimit = 0, lastTick = performance.now(), paceTimer = 0;
 function tick(now) {
   const dt = (now - lastTick) / 1000;
   lastTick = now;
   if (document.body.dataset.view === "reader" && state.id) {
-    const pxPerSecond = pxPerWord() * (state.maxWpm / 60);
+    const pxPerSecond = pxPerWord() * (MAX_WPM / 60);
     // Grows at reading pace up to one screen past the viewport; never shrinks, so
     // re-reading earlier text is free.
     readLimit = Math.max(readLimit, Math.min(readLimit + pxPerSecond * dt, scrollY + innerHeight));

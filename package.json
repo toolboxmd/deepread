@@ -1,0 +1,12 @@
+{
+  "name": "deepread",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "./dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.143.0"
+  }
+}

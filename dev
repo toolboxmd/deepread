@@ -1,10 +1,12 @@
 #!/bin/zsh
-# Start the Deep Read prototype locally. The OpenRouter key comes from OpenBao on rocky
-# (shared/openrouter/agents) unless OPENROUTER_API_KEY is already set.
+# Run the Deep Read Worker locally on http://localhost:4317.
+# The OpenRouter key comes from OpenBao on rocky and is passed only through the
+# environment (no .dev.vars file), unless OPENROUTER_API_KEY is already set.
 set -euo pipefail
 cd "${0:A:h}"
 if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
   OPENROUTER_API_KEY="$(ssh rocky '"/Users/rocky/Library/Application Support/OpenBao/bin/bao-agent" kv get -field=api_key shared/openrouter/agents')"
   export OPENROUTER_API_KEY
 fi
-exec node server.mjs
+export CLOUDFLARE_INCLUDE_PROCESS_ENV=true
+exec npx wrangler dev --port 4317 --ip 127.0.0.1

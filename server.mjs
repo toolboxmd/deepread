@@ -47,7 +47,7 @@ async function start(req, res) {
   json(res, 200, { id, model: MODEL, effort: EFFORT, maxWpm: MAX_WPM });
 }
 
-async function next(req, res, id) {
+async function next(req, res, id, requested) {
   const s = sessions.get(id);
   if (!s) return json(res, 404, { error: "unknown article" });
   if (s.busy) return json(res, 409, { error: "already writing" });
@@ -58,7 +58,10 @@ async function next(req, res, id) {
   s.busy = true;
   // One moving cache breakpoint on the newest user turn, plus the system prompt.
   for (const m of s.messages.slice(1)) if (m.role === "user" && Array.isArray(m.content)) m.content = m.content[0].text;
-  const turn = { role: "user", content: [{ type: "text", text: s.chunks === 0 ? s.topic : "continue", cache_control: CC }] };
+  // The page measures how many words fit on the reader's screen and asks for that much.
+  const words = Math.min(700, Math.max(120, Math.round(Number(requested) || 400)));
+  const ask = s.chunks === 0 ? `${s.topic}\n\n(Start the article. About ${words} words.)` : `continue (about ${words} words)`;
+  const turn = { role: "user", content: [{ type: "text", text: ask, cache_control: CC }] };
   const upstream = new AbortController();
   res.on("close", () => upstream.abort());
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
@@ -93,12 +96,12 @@ async function next(req, res, id) {
     s.messages.push(turn, { role: "assistant", content: text });
     s.chunks += 1;
     s.cost += usage?.cost || 0;
-    const words = text.split(/\s+/).filter(Boolean).length;
+    const written = text.split(/\s+/).filter(Boolean).length;
     refill(s);
-    s.budget -= words;
-    send("done", { chunk: s.chunks, words, cost: usage?.cost || 0, total: s.cost,
+    s.budget -= written;
+    send("done", { chunk: s.chunks, words: written, asked: words, cost: usage?.cost || 0, total: s.cost,
       cached: usage?.prompt_tokens_details?.cached_tokens || 0, prompt: usage?.prompt_tokens || 0 });
-    console.log(`[${id.slice(0, 8)}] chunk ${s.chunks} ${words}w $${(usage?.cost || 0).toFixed(4)} total $${s.cost.toFixed(4)}`);
+    console.log(`[${id.slice(0, 8)}] chunk ${s.chunks} asked ${words}w wrote ${written}w $${(usage?.cost || 0).toFixed(4)} total $${s.cost.toFixed(4)}`);
   } catch (err) {
     if (!upstream.signal.aborted) { console.error(err); send("error", { message: String(err.message || err) }); }
   } finally {
@@ -120,7 +123,7 @@ async function serveStatic(res, path) {
 http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (req.method === "POST" && url.pathname === "/api/article") return start(req, res).catch((e) => json(res, 400, { error: String(e) }));
-  if (req.method === "POST" && url.pathname === "/api/next") return next(req, res, url.searchParams.get("id"));
+  if (req.method === "POST" && url.pathname === "/api/next") return next(req, res, url.searchParams.get("id"), url.searchParams.get("words"));
   if (req.method === "GET") return serveStatic(res, url.pathname);
   json(res, 405, { error: "method not allowed" });
 }).listen(PORT, "127.0.0.1", () => console.log(`Deep Read on http://localhost:${PORT}  (${MODEL}, ${EFFORT}, ${MAX_WPM} wpm cap)`));

@@ -1,17 +1,22 @@
 <!doctype html>
-<!-- Prototype question: does a live, reading-paced Deep Read feel good, and which look fits it?
-     Variants on one route via ?variant=A|B|C (Book, Night, Margin). -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Deep Read</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Inter:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400;1,7..72,600&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
   <link rel="stylesheet" href="/style.css">
+  <script>document.documentElement.dataset.theme = localStorage.getItem("deepread-theme") || "paper";</script>
 </head>
-<body data-variant="A" data-view="search">
+<body data-view="search">
+  <div class="themes" role="radiogroup" aria-label="Theme">
+    <button data-theme-choice="paper" role="radio" aria-label="Paper theme" title="Paper"></button>
+    <button data-theme-choice="white" role="radio" aria-label="White theme" title="White"></button>
+    <button data-theme-choice="black" role="radio" aria-label="Black theme" title="Black"></button>
+  </div>
+
   <main class="search">
     <h1 class="brand">Deep Read</h1>
     <p class="tagline">One topic. As deep as you care to read.</p>
@@ -26,19 +31,12 @@
       <a href="/" class="brand-small">Deep Read</a>
       <div class="progress"><span id="progress-bar"></span></div>
     </header>
-    <nav class="outline" aria-label="Sections"><p class="outline-title">In this read</p><ol id="outline"></ol></nav>
     <article id="article"></article>
     <div id="status" class="status" aria-live="polite"></div>
   </div>
 
   <div id="pace" class="pace" hidden>Reading pace</div>
-
-  <div class="switcher" role="toolbar" aria-label="Prototype variants">
-    <button id="prev" aria-label="Previous variant">&larr;</button>
-    <span id="variant-name">A (Book)</span>
-    <button id="next" aria-label="Next variant">&rarr;</button>
-    <span class="stats" id="stats"></span>
-  </div>
+  <div id="stats" class="stats" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>

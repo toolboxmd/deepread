@@ -1,35 +1,51 @@
-// Deep Read prototype client: streams chunks as the reader approaches the end,
-// caps downward scrolling at a fast reading pace, and switches design variants.
-const VARIANTS = { A: "Book", B: "Night", C: "Margin" };
+// Deep Read client: asks for screen-sized chunks only as the reader approaches the end,
+// caps downward scrolling at a fast reading pace, and remembers the colour theme.
 const $ = (id) => document.getElementById(id);
 const article = $("article");
+const DEBUG = new URLSearchParams(location.search).has("debug");
 
-const state = { id: null, maxWpm: 700, chunks: [], writing: false, waiting: false, retryTimer: 0, cost: 0, cached: 0, prompt: 0 };
+// Cost tuning. Waste when a reader stops is at most AHEAD + CHUNK screens of unread text;
+// smaller chunks waste less but pay the model's fixed per-request thinking more often.
+const CHUNK_SCREENS = 1.5; // each request asks for about this many screens of text
+const AHEAD_SCREENS = 1.0; // request the next chunk when less than this much is unread
+const MIN_WORDS = 150, MAX_WORDS = 600;
 
-// ---------- variants ----------
-function setVariant(key, push = true) {
-  if (!VARIANTS[key]) key = "A";
-  document.body.dataset.variant = key;
-  $("variant-name").textContent = `${key} (${VARIANTS[key]})`;
-  if (push) {
-    const url = new URL(location.href);
-    url.searchParams.set("variant", key);
-    history.replaceState(null, "", url);
-  }
+const state = { id: null, maxWpm: 700, chunks: [], writing: false, waiting: false, retryTimer: 0, cost: 0, cached: 0, prompt: 0, asked: 0 };
+
+// ---------- theme ----------
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("deepread-theme", theme);
 }
-function cycle(step) {
-  const keys = Object.keys(VARIANTS);
-  const i = keys.indexOf(document.body.dataset.variant);
-  setVariant(keys[(i + step + keys.length) % keys.length]);
+document.querySelectorAll("[data-theme-choice]").forEach((b) => (b.onclick = () => setTheme(b.dataset.themeChoice)));
+
+// ---------- measuring ----------
+function textWords() { return article.textContent.split(/\s+/).filter(Boolean).length; }
+function textHeight() {
+  const first = article.firstElementChild, last = article.lastElementChild;
+  return first ? last.getBoundingClientRect().bottom - first.getBoundingClientRect().top : 0;
 }
-$("prev").onclick = () => cycle(-1);
-$("next").onclick = () => cycle(1);
-addEventListener("keydown", (e) => {
-  if (e.target.closest("input, textarea, [contenteditable]")) return;
-  if (e.key === "ArrowLeft") cycle(-1);
-  if (e.key === "ArrowRight") cycle(1);
-});
-setVariant(new URLSearchParams(location.search).get("variant") || "A", false);
+// Pixels per word, measured from the article once there is enough text, estimated from
+// the column width and font size before that.
+function pxPerWord() {
+  const words = textWords();
+  if (words > 120) return textHeight() / words;
+  const cs = getComputedStyle(article);
+  const size = parseFloat(cs.fontSize), line = parseFloat(cs.lineHeight) || size * 1.72;
+  const width = article.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  if (!(width > 0)) return 4.6;
+  return (line / (width / (size * 2.9))) * 1.25; // 1.25 covers headings and paragraph gaps
+}
+// The first request fills the visible screen plus the read-ahead buffer (and the title)
+// in one go; later requests add CHUNK_SCREENS.
+function wordsForChunk() {
+  const screens = state.chunks.length === 0 ? 1 + AHEAD_SCREENS + 0.2 : CHUNK_SCREENS;
+  return Math.round(Math.min(MAX_WORDS, Math.max(MIN_WORDS, (screens * innerHeight) / pxPerWord())));
+}
+function unreadPx() {
+  const last = article.lastElementChild;
+  return last ? last.getBoundingClientRect().bottom - innerHeight : 0;
+}
 
 // ---------- rendering ----------
 // Math is pulled out before Markdown so marked cannot eat the backslashes.
@@ -48,26 +64,17 @@ function scheduleRender() {
   frame = requestAnimationFrame(() => {
     frame = 0;
     article.innerHTML = render(state.chunks.join("\n\n"));
-    buildOutline();
     checkAhead();
   });
-}
-
-function buildOutline() {
-  const heads = [...article.querySelectorAll("h1, h2")];
-  $("outline").innerHTML = heads.map((h, i) => {
-    h.id = `s${i}`;
-    return `<li class="${h.tagName === "H1" ? "top" : ""}"><a href="#s${i}">${h.textContent}</a></li>`;
-  }).join("");
 }
 
 function status(text) { $("status").textContent = text; }
 
 function stats() {
+  $("stats").hidden = !DEBUG || !state.id;
   const words = state.chunks.join(" ").split(/\s+/).filter(Boolean).length;
-  $("stats").textContent = state.id
-    ? `${state.chunks.length} chunks · ${words} words · $${state.cost.toFixed(3)} · cached ${state.cached}/${state.prompt} tok · cap ${state.maxWpm} wpm`
-    : "";
+  $("stats").textContent = `${state.chunks.length} chunks · ${words} words · last ask ${state.asked}w · `
+    + `$${state.cost.toFixed(4)} · cached ${state.cached}/${state.prompt} tok · ${pxPerWord().toFixed(1)} px/word`;
 }
 
 // ---------- generation ----------
@@ -75,7 +82,7 @@ async function startArticle(topic) {
   document.body.dataset.view = "reader";
   article.innerHTML = "";
   clearTimeout(state.retryTimer);
-  Object.assign(state, { id: null, chunks: [], writing: false, waiting: false, cost: 0, cached: 0, prompt: 0 });
+  Object.assign(state, { id: null, chunks: [], writing: false, waiting: false, cost: 0, cached: 0, prompt: 0, asked: 0 });
   status("Thinking about where to begin…");
   const r = await fetch("/api/article", { method: "POST", body: JSON.stringify({ topic }) });
   const info = await r.json();
@@ -90,11 +97,12 @@ async function startArticle(topic) {
 async function fetchNext() {
   if (state.writing || !state.id) return;
   state.writing = true;
+  state.asked = wordsForChunk();
   const index = state.chunks.length;
   state.chunks.push("");
   let finished = false;
   try {
-    const r = await fetch(`/api/next?id=${state.id}`, { method: "POST" });
+    const r = await fetch(`/api/next?id=${state.id}&words=${state.asked}`, { method: "POST" });
     if (r.status === 429) {
       const { retryAfterMs } = await r.json();
       state.chunks.pop();
@@ -136,27 +144,23 @@ async function fetchNext() {
   }
 }
 
-// Keep about one screen of unread text below the viewport.
+// Ask for more only when less than AHEAD_SCREENS of written text is left below the viewport.
 function checkAhead() {
   if (state.writing || state.waiting || !state.id || document.body.dataset.view !== "reader") return;
-  const remaining = document.documentElement.scrollHeight - (scrollY + innerHeight);
-  if (remaining < innerHeight * 1.2) fetchNext();
+  if (unreadPx() < innerHeight * AHEAD_SCREENS) fetchNext();
 }
 
 // ---------- reading-pace scroll cap ----------
 // The furthest point you may scroll to grows at maxWpm, and you can bank at most one screen.
 let readLimit = 0, lastTick = performance.now(), paceTimer = 0;
-function pxPerSecond() {
-  const words = Math.max(1, article.textContent.split(/\s+/).length);
-  return (article.scrollHeight / words) * (state.maxWpm / 60);
-}
 function tick(now) {
   const dt = (now - lastTick) / 1000;
   lastTick = now;
   if (document.body.dataset.view === "reader" && state.id) {
+    const pxPerSecond = pxPerWord() * (state.maxWpm / 60);
     // Grows at reading pace up to one screen past the viewport; never shrinks, so
     // re-reading earlier text is free.
-    readLimit = Math.max(readLimit, Math.min(readLimit + pxPerSecond() * dt, scrollY + innerHeight));
+    readLimit = Math.max(readLimit, Math.min(readLimit + pxPerSecond * dt, scrollY + innerHeight));
   }
   requestAnimationFrame(tick);
 }
@@ -174,17 +178,8 @@ addEventListener("scroll", () => {
   checkAhead();
 }, { passive: true });
 
-// Jumping via the outline goes to text that already exists, so it lifts the cap.
-$("outline").addEventListener("click", (e) => {
-  const link = e.target.closest("a");
-  if (!link) return;
-  const target = document.querySelector(link.getAttribute("href"));
-  if (target) readLimit = Math.max(readLimit, target.getBoundingClientRect().top + scrollY);
-});
-
 $("search-form").onsubmit = (e) => {
   e.preventDefault();
   const topic = $("topic").value.trim();
   if (topic) startArticle(topic);
 };
-stats();

@@ -11,7 +11,8 @@ const AHEAD_SCREENS = 1.0; // request the next chunk when less than this much is
 const MIN_WORDS = 150, MAX_WORDS = 600;
 
 const MAX_WPM = 700; // fastest reading pace the scroll cap allows
-const state = { id: null, topic: "", chunks: [], askedPer: [], writing: false, stopped: false, retryAt: 0, cost: 0, cached: 0, prompt: 0, asked: 0 };
+const STALL_MS = 30000; // no text or heartbeat for this long means the request stalled
+const state = { id: null, topic: "", chunks: [], askedPer: [], writing: false, stopped: false, retryAt: 0, retrying: false, cost: 0, cached: 0, prompt: 0, asked: 0 };
 
 // ---------- theme ----------
 function setTheme(theme) {
@@ -104,6 +105,71 @@ function scheduleRender() {
 
 function status(text) { $("status").textContent = text; }
 
+// ---------- "being written" indicator: a rotating orb of dots ----------
+// Points on a sphere (Fibonacci spiral) spun around a tilted axis; nearer dots are
+// larger and darker. A heartbeat from the model briefly speeds it up.
+function makeOrb(canvas) {
+  const pts = [], N = 150;
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (2 * (i + 0.5)) / N, r = Math.sqrt(1 - y * y), a = i * 2.39996;
+    pts.push([Math.cos(a) * r, y, Math.sin(a) * r]);
+  }
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let angle = 0.6, boost = 0, running = false, last = 0;
+  function draw(now) {
+    const dpr = devicePixelRatio || 1, px = Math.round(canvas.clientWidth * dpr);
+    if (canvas.width !== px) canvas.width = canvas.height = px;
+    const ctx = canvas.getContext("2d"), dt = last ? Math.min(0.1, (now - last) / 1000) : 0;
+    last = now;
+    boost *= Math.pow(0.25, dt);
+    if (!still) angle += (0.7 + boost * 2.2) * dt;
+    const c = px / 2, R = c * 0.84 * (1 + 0.05 * boost), ca = Math.cos(angle), sa = Math.sin(angle), ct = Math.cos(0.45), st = Math.sin(0.45);
+    ctx.clearRect(0, 0, px, px);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text").trim();
+    for (const [x, y, z] of pts) {
+      const x1 = x * ca + z * sa, z1 = -x * sa + z * ca, y2 = y * ct - z1 * st, depth = (y * st + z1 * ct + 1) / 2;
+      ctx.globalAlpha = 0.06 + 0.7 * depth * depth;
+      ctx.beginPath();
+      ctx.arc(c + x1 * R, c + y2 * R, (0.35 + 0.6 * depth) * dpr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (running) requestAnimationFrame(draw);
+  }
+  return {
+    start() { if (!running) { running = true; last = 0; requestAnimationFrame(draw); } },
+    stop() { running = false; },
+    pulse() { boost = 1; },
+  };
+}
+const orb = makeOrb($("orb"));
+let workingSince = 0, workingTimer = 0;
+function showWorking(text) {
+  $("working-text").textContent = text;
+  $("working-time").textContent = "";
+  $("working").hidden = false;
+  workingSince = Date.now();
+  orb.start();
+  clearInterval(workingTimer);
+  workingTimer = setInterval(() => {
+    const s = Math.floor((Date.now() - workingSince) / 1000);
+    $("working-time").textContent = s >= 3 ? `· ${s}s` : "";
+  }, 500);
+}
+function hideWorking() {
+  $("working").hidden = true;
+  orb.stop();
+  clearInterval(workingTimer);
+}
+
+// ---------- toast ----------
+let toastTimer = 0;
+function toast(html, ms) {
+  $("toast").innerHTML = html;
+  $("toast").classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("show"), ms);
+}
+
 function stats() {
   $("stats").hidden = !DEBUG || !state.id;
   const words = state.chunks.join(" ").split(/\s+/).filter(Boolean).length;
@@ -116,9 +182,9 @@ function stats() {
 function startArticle(topic) {
   document.body.dataset.view = "reader";
   article.innerHTML = "";
-  Object.assign(state, { id: crypto.randomUUID(), topic, chunks: [], askedPer: [], writing: false, stopped: false, retryAt: 0,
-    cost: 0, cached: 0, prompt: 0, asked: 0 });
-  status("Thinking about where to begin…");
+  Object.assign(state, { id: crypto.randomUUID(), topic, chunks: [], askedPer: [], writing: false, stopped: false, retryAt: 0, retrying: false,
+    cost: 0, cached: 0, prompt: 0, asked: 0, paceExplained: false });
+  status("");
   document.title = `${topic} · Deep Read`;
   readLimit = 0;
   fetchNext();
@@ -132,15 +198,26 @@ async function fetchNext() {
   const index = state.chunks.length;
   state.chunks.push("");
   let finished = false;
+  // It sits at the end of the text, so readers only see it when they are waiting for more.
+  showWorking(state.retrying ? "Taking longer than usual. Trying again…"
+    : index === 0 ? "Thinking about where to begin…" : "Writing what comes next…");
+  state.retrying = false;
+  // Watchdog: if neither text nor a thinking heartbeat arrives for STALL_MS, the model's
+  // servers have stalled; cancel and try again rather than spin forever.
+  const abort = new AbortController();
+  let lastEvent = Date.now(), stalled = false;
+  const watchdog = setInterval(() => {
+    if (Date.now() - lastEvent > STALL_MS) { stalled = true; abort.abort(); }
+  }, 2000);
   try {
     const r = await fetch("/api/next", { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: state.id, topic: state.topic, turns, words: state.asked }) });
+      body: JSON.stringify({ id: state.id, topic: state.topic, turns, words: state.asked }), signal: abort.signal });
     if (r.status === 402) {
       state.stopped = true;
       throw new Error("Deep Read is out of reading credit for now. Please come back later.");
     }
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "The writer is unavailable right now.");
-    if (index > 0) status("");
+    status("");
     const reader = r.body.pipeThrough(new TextDecoderStream()).getReader();
     let buf = "";
     for (;;) {
@@ -152,8 +229,10 @@ async function fetchNext() {
         const block = buf.slice(0, cut);
         buf = buf.slice(cut + 2);
         const event = block.match(/^event: (.*)$/m)?.[1];
+        lastEvent = Date.now();
         const data = JSON.parse(block.match(/^data: (.*)$/m)?.[1] || "{}");
-        if (event === "delta") { state.chunks[index] += data.text; status(""); scheduleRender(); }
+        if (event === "delta") { state.chunks[index] += data.text; hideWorking(); scheduleRender(); }
+        if (event === "thinking") orb.pulse();
         if (event === "done") {
           finished = true;
           state.askedPer[index] = data.asked;
@@ -166,9 +245,12 @@ async function fetchNext() {
   } catch (err) {
     // A chunk only counts once it finished; a partial one would break the shared history.
     if (!finished) state.chunks.splice(index, 1);
-    if (state.stopped) status(err.message);
+    if (stalled) { state.retrying = true; state.retryAt = Date.now() + 500; setTimeout(checkAhead, 600); }
+    else if (state.stopped) status(err.message);
     else { status(`Something went wrong: ${err.message} Trying again shortly.`); state.retryAt = Date.now() + 10000; setTimeout(checkAhead, 10050); }
   } finally {
+    clearInterval(watchdog);
+    if (!state.retrying) hideWorking();
     state.writing = false;
     stats();
     scheduleRender();
@@ -183,7 +265,7 @@ function checkAhead() {
 
 // ---------- reading-pace scroll cap ----------
 // The furthest point you may scroll to grows at MAX_WPM, and you can bank at most one screen.
-let readLimit = 0, lastTick = performance.now(), paceTimer = 0;
+let readLimit = 0, lastTick = performance.now(), lastPaceToast = 0;
 function tick(now) {
   const dt = (now - lastTick) / 1000;
   lastTick = now;
@@ -200,9 +282,14 @@ addEventListener("scroll", () => {
   if (document.body.dataset.view !== "reader") return;
   if (scrollY > readLimit + 2) {
     scrollTo(0, readLimit);
-    $("pace").hidden = false;
-    clearTimeout(paceTimer);
-    paceTimer = setTimeout(() => ($("pace").hidden = true), 900);
+    // Explain the limit fully the first time in each article, then only briefly.
+    if (!state.paceExplained) {
+      state.paceExplained = true;
+      toast(`<strong>Slowed on purpose.</strong> Deep Read writes as you read, up to ${MAX_WPM} words a minute. Keep reading and it keeps going.`, 6000);
+    } else if (Date.now() - lastPaceToast > 4000) {
+      toast("Keeping pace with your reading", 1500);
+    }
+    lastPaceToast = Date.now();
   }
   const max = document.documentElement.scrollHeight - innerHeight;
   $("progress-bar").style.width = `${max > 0 ? (scrollY / max) * 100 : 0}%`;

@@ -107,3 +107,6 @@ article blockquote { margin: 1.5rem 0; padding-left: 1.2rem; border-left: 2px so
 .dial:not(.open):hover { opacity: 1; }
 @media (max-width: 600px) { .dial { right: 1rem; bottom: 1rem; } }
 @media (prefers-reduced-motion: reduce) { .dial-goo .blob, .dial-item, .dial-toggle > * { transition: none; } }
+/* Centre letters by their ink: trim the font's accent space above capitals and descender space below. */
+.toggle-aa, .aa { display: block; text-box: trim-both cap alphabetic; }
+@supports not (text-box: trim-both cap alphabetic) { .toggle-aa, .aa { transform: translateY(-.1em); } }

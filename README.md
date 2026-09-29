@@ -38,3 +38,11 @@ The production key lives in OpenBao at
 `projects/deepread/production/openrouter` and is stored as the Worker secret
 `OPENROUTER_API_KEY`. Deploy with `npx wrangler deploy` using the Cloudflare
 operator credential from OpenBao.
+
+## KOReader
+
+Read Deep Read on an e-reader with [deepread.koplugin](https://github.com/toolboxmd/deepread.koplugin), available in the KOReader App Store.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).

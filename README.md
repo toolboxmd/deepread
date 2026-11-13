@@ -21,15 +21,17 @@ and passed only through the environment, unless `OPENROUTER_API_KEY` is set.
 
 - `src/worker.js` is a stateless Cloudflare Worker. The page sends the topic,
   the article so far and a word target; the Worker adds the OpenRouter key, the
-  system prompt (`prompt.md`) and the model (`x-ai/grok-4.7`, low effort),
-  and streams the next chunk. It rebuilds the same history every time so the
-  prompt cache keeps matching.
+  system prompt (`prompt.md`) and the model (`x-ai/grok-4.7`, low effort)
+  with OpenRouter's web search tool, and streams the next chunk. The model
+  searches when a topic is recent or unfamiliar; there is no search cap. It
+  rebuilds the same history every time so the prompt cache keeps matching.
 - `public/` is the page. It measures how many words fit on the reader's
   screen, asks for about 1.5 screens at a time when less than one screen is
   left unread, and caps downward scrolling at 700 words per minute. Reading
   settings (text size, Paper/White/Black) sit behind the **Aa** button.
 - Spending is bounded by the production key's own OpenRouter limit. Each chunk
-  writes one log line (article id, chunk number, words, cost, cached tokens)
+  writes one log line (article id, chunk number, words, cost including search
+  fees, cached tokens, searches, OpenRouter generation id)
   to Cloudflare Workers Logs; nothing personal is recorded.
 
 ## Deploy

@@ -10,6 +10,9 @@ const EFFORT = "low";
 const MAX_TURNS = 80;
 const MAX_CHUNK_CHARS = 8000;
 const CC = { type: "ephemeral" };
+// The model decides when to search; engine auto is xAI's native web search for Grok.
+// No search cap, by the owner's decision (issue #10).
+const TOOLS = [{ type: "openrouter:web_search" }];
 
 const json = (status, body) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -47,7 +50,7 @@ async function next(request, env, ctx) {
     method: "POST", signal: upstream.signal,
     headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}`, "content-type": "application/json",
       "http-referer": "https://deepread.toolbox.md", "x-title": "Deep Read" },
-    body: JSON.stringify({ model: MODEL, messages, stream: true, reasoning: { effort: EFFORT },
+    body: JSON.stringify({ model: MODEL, messages, tools: TOOLS, stream: true, reasoning: { effort: EFFORT },
       usage: { include: true }, session_id: id || undefined }),
   });
   if (r.status === 402) return json(402, { error: "out_of_credit" });
@@ -62,9 +65,11 @@ async function next(request, env, ctx) {
   const send = (event, data) => writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
 
   ctx.waitUntil((async () => {
-    let text = "", usage = null, buf = "", lastBeat = 0, firstTextMs = null;
+    let text = "", usage = null, buf = "", lastBeat = 0, firstTextMs = null, gen = null;
     const started = Date.now();
     const decoder = new TextDecoder();
+    // While the model reasons or searches, send a content-free heartbeat at most once a second.
+    const beat = async () => { if (Date.now() - lastBeat > 1000) { lastBeat = Date.now(); await send("thinking", {}); } };
     try {
       for await (const bytes of r.body) {
         buf += decoder.decode(bytes, { stream: true });
@@ -72,8 +77,11 @@ async function next(request, env, ctx) {
         while ((nl = buf.indexOf("\n")) >= 0) {
           const line = buf.slice(0, nl).trim();
           buf = buf.slice(nl + 1);
+          // OpenRouter sends ": OPENROUTER PROCESSING" comments while a search runs.
+          if (line.startsWith(":")) { await beat(); continue; }
           if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
           const evt = JSON.parse(line.slice(6));
+          gen ??= evt.id;
           if (evt.error) throw new Error(evt.error.message || "stream error");
           const d = evt.choices?.[0]?.delta;
           const delta = d?.content;
@@ -82,11 +90,7 @@ async function next(request, env, ctx) {
             text += delta;
             await send("delta", { text: delta });
           }
-          // While the model reasons, send a content-free heartbeat at most once a second.
-          else if ((d?.reasoning || d?.reasoning_details?.length) && Date.now() - lastBeat > 1000) {
-            lastBeat = Date.now();
-            await send("thinking", {});
-          }
+          else if (d?.reasoning || d?.reasoning_details?.length) await beat();
           if (evt.usage) usage = evt.usage;
         }
       }
@@ -96,7 +100,8 @@ async function next(request, env, ctx) {
       // One non-personal line per chunk: how far readers get and what it costs.
       console.log(JSON.stringify({ evt: "chunk", article: id, n: turns.length + 1, asked: words, written,
         cost: usage?.cost || 0, cached: usage?.prompt_tokens_details?.cached_tokens || 0, prompt: usage?.prompt_tokens || 0,
-        thinking: usage?.completion_tokens_details?.reasoning_tokens ?? null, first_text_ms: firstTextMs,
+        thinking: usage?.completion_tokens_details?.reasoning_tokens ?? null,
+        searches: usage?.server_tool_use_details?.web_search_requests ?? 0, gen, first_text_ms: firstTextMs,
         total_ms: Date.now() - started }));
       await writer.close();
     } catch (err) {
